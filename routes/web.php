@@ -6,24 +6,40 @@ use App\Http\Controllers\VentaController;
 use App\Http\Controllers\RutaController;
 use App\Http\Controllers\BusController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\ClienteController;
 
 /*
 |--------------------------------------------------------------------------
-| Rutas públicas
+| Rutas públicas para clientes
 |--------------------------------------------------------------------------
 */
 
-// Redirige "/" al login
-Route::get('/', fn() => redirect()->route('login'));
+// Página principal para clientes (pública)
+Route::get('/', [ClienteController::class, 'index'])->name('cliente.index');
 
-// Autenticación
+// Rutas públicas para compra de pasajes
+Route::prefix('cliente')->name('cliente.')->group(function () {
+    Route::get('/', [ClienteController::class, 'index'])->name('index');
+    Route::post('/buscar-horarios', [ClienteController::class, 'buscarHorarios'])->name('buscar-horarios');
+    Route::post('/formulario-compra', [ClienteController::class, 'formularioCompra'])->name('formulario-compra');
+    Route::post('/procesar-compra', [ClienteController::class, 'procesarCompra'])->name('procesar-compra');
+    Route::get('/descargar-ticket/{codigoVenta}', [ClienteController::class, 'descargarTicket'])->name('descargar-ticket');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Rutas de autenticación para empleados
+|--------------------------------------------------------------------------
+*/
+
+// Autenticación para empleados
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 /*
 |--------------------------------------------------------------------------
-| Rutas protegidas (requieren login)
+| Rutas protegidas (requieren login de empleado)
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth'])->group(function () {
@@ -117,8 +133,8 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/debug-routes', function () {
     return response()->json([
         'ventas.procesar' => route('ventas.procesar'),
+        'cliente.procesar-compra' => route('cliente.procesar-compra'),
         'method' => 'POST',
-        'middleware' => ['auth'],
         'timestamp' => now()
     ]);
-})->middleware('auth');
+});
