@@ -11,8 +11,6 @@ use App\Models\Horario;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
-use Maatwebsite\Excel\Facades\Excel;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class AdminController extends Controller
 {
@@ -55,12 +53,11 @@ class AdminController extends Controller
     /**
      * Gestión de empleados
      */
-   public function empleados()
-{
-    $users = User::orderBy('name')->paginate(10);
-    return view('admin.empleados.index', compact('users'));
-}
-
+    public function empleados()
+    {
+        $users = User::orderBy('name')->paginate(10);
+        return view('admin.empleados.index', compact('users'));
+    }
 
     /**
      * Crear nuevo empleado
@@ -160,51 +157,6 @@ class AdminController extends Controller
     }
 
     /**
-     * Exportar reporte a Excel
-     */
-    public function exportarExcel(Request $request)
-    {
-        $fechaInicio = $request->get('fecha_inicio', now()->startOfMonth()->format('Y-m-d'));
-        $fechaFin = $request->get('fecha_fin', now()->format('Y-m-d'));
-        $empleadoId = $request->get('empleado_id');
-
-        return Excel::download(new VentasExport($fechaInicio, $fechaFin, $empleadoId), 
-                              'reporte_ventas_' . $fechaInicio . '_' . $fechaFin . '.xlsx');
-    }
-
-    /**
-     * Exportar reporte a PDF
-     */
-    public function exportarPDF(Request $request)
-    {
-        $fechaInicio = $request->get('fecha_inicio', now()->startOfMonth()->format('Y-m-d'));
-        $fechaFin = $request->get('fecha_fin', now()->format('Y-m-d'));
-        $empleadoId = $request->get('empleado_id');
-
-        $query = Venta::with(['user', 'horario.ruta', 'tickets'])
-                     ->whereBetween('fecha_venta', [$fechaInicio, $fechaFin]);
-
-        if ($empleadoId) {
-            $query->where('user_id', $empleadoId);
-        }
-
-        $ventas = $query->orderBy('fecha_venta', 'desc')->get();
-
-        $resumen = [
-            'total_ventas' => $ventas->count(),
-            'total_ingresos' => $ventas->sum('total'),
-            'total_pasajes' => $ventas->sum('cantidad_pasajes'),
-            'promedio_venta' => $ventas->avg('total'),
-            'fecha_inicio' => $fechaInicio,
-            'fecha_fin' => $fechaFin
-        ];
-
-        $pdf = Pdf::loadView('admin.reportes.pdf', compact('ventas', 'resumen'));
-        
-        return $pdf->download('reporte_ventas_' . $fechaInicio . '_' . $fechaFin . '.pdf');
-    }
-
-    /**
      * Gestión de horarios
      */
     public function horarios()
@@ -251,7 +203,36 @@ class AdminController extends Controller
             'activo' => true
         ]);
 
-        return redirect()->route('admin.horarios')->with('success', 'Horario creado correctamente');
+        return redirect()->route('admin.horarios.index')->with('success', 'Horario creado correctamente');
+    }
+
+    /**
+     * Editar horario
+     */
+    public function editarHorario(Horario $horario)
+    {
+        $rutas = Ruta::where('activa', true)->get();
+        $buses = Bus::where('estado', 'activo')->get();
+        
+        return view('admin.horarios.edit', compact('horario', 'rutas', 'buses'));
+    }
+
+    /**
+     * Actualizar horario
+     */
+    public function actualizarHorario(Request $request, Horario $horario)
+    {
+        $request->validate([
+            'ruta_id' => 'required|exists:rutas,id',
+            'bus_id' => 'required|exists:buses,id',
+            'fecha' => 'required|date|after_or_equal:today',
+            'hora_salida' => 'required',
+            'activo' => 'boolean'
+        ]);
+
+        $horario->update($request->all());
+
+        return redirect()->route('admin.horarios.index')->with('success', 'Horario actualizado correctamente');
     }
 
     /**
@@ -267,5 +248,48 @@ class AdminController extends Controller
         $horario->update(['activo' => false]);
         
         return back()->with('success', 'Horario cancelado correctamente');
+    }
+
+    /**
+     * Exportar reporte a Excel
+     */
+    public function exportarExcel(Request $request)
+    {
+        // Implementación básica - puedes usar maatwebsite/excel después
+        $fechaInicio = $request->get('fecha_inicio', now()->startOfMonth()->format('Y-m-d'));
+        $fechaFin = $request->get('fecha_fin', now()->format('Y-m-d'));
+        
+        return redirect()->back()->with('info', 'Funcionalidad de exportación Excel en desarrollo');
+    }
+
+    /**
+     * Exportar reporte a PDF
+     */
+    public function exportarPDF(Request $request)
+    {
+        $fechaInicio = $request->get('fecha_inicio', now()->startOfMonth()->format('Y-m-d'));
+        $fechaFin = $request->get('fecha_fin', now()->format('Y-m-d'));
+        $empleadoId = $request->get('empleado_id');
+
+        $query = Venta::with(['user', 'horario.ruta', 'tickets'])
+                     ->whereBetween('fecha_venta', [$fechaInicio, $fechaFin]);
+
+        if ($empleadoId) {
+            $query->where('user_id', $empleadoId);
+        }
+
+        $ventas = $query->orderBy('fecha_venta', 'desc')->get();
+
+        $resumen = [
+            'total_ventas' => $ventas->count(),
+            'total_ingresos' => $ventas->sum('total'),
+            'total_pasajes' => $ventas->sum('cantidad_pasajes'),
+            'promedio_venta' => $ventas->avg('total'),
+            'fecha_inicio' => $fechaInicio,
+            'fecha_fin' => $fechaFin
+        ];
+
+        // Implementación básica - requiere configurar DomPDF
+        return redirect()->back()->with('info', 'Funcionalidad de exportación PDF en desarrollo');
     }
 }

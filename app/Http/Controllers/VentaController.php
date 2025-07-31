@@ -10,6 +10,7 @@ use App\Models\Venta;
 use App\Models\Ticket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class VentaController extends Controller
@@ -43,9 +44,9 @@ class VentaController extends Controller
             ->where('asientos_disponibles', '>', 0)
             ->orderBy('hora_salida')
             ->get();
-    $fecha = $request->fecha;
-return view('ventas.horarios', compact('ruta', 'horarios', 'fecha'));
-
+            
+        $fecha = $request->fecha;
+        return view('ventas.horarios', compact('ruta', 'horarios', 'fecha'));
     }
 
     /**
@@ -80,26 +81,52 @@ return view('ventas.horarios', compact('ruta', 'horarios', 'fecha'));
      */
     public function procesarVenta(Request $request)
     {
-        $request->validate([
-            'horario_id' => 'required|exists:horarios,id',
-            'asientos' => 'required|array',
-            'asientos.*' => 'required|integer',
-            'pasajeros' => 'required|array',
-            'pasajeros.*.nombre' => 'required|string|max:255',
-            'pasajeros.*.dni' => 'required|string|max:20',
-            'pasajeros.*.telefono' => 'nullable|string|max:15',
-            'pasajeros.*.email' => 'nullable|email'
-        ]);
+        // DEBUG: Log de datos recibidos
+        Log::info('=== PROCESANDO VENTA ===');
+        Log::info('Request method: ' . $request->method());
+        Log::info('Request URL: ' . $request->url());
+        Log::info('Todos los datos:', $request->all());
+        Log::info('Headers:', $request->headers->all());
+        
+        // Verificar que sea POST
+        if (!$request->isMethod('post')) {
+            Log::error('Método no es POST: ' . $request->method());
+            return response()->json(['error' => 'Método no permitido'], 405);
+        }
 
         try {
+            // Validación inicial
+            $validatedData = $request->validate([
+                'horario_id' => 'required|exists:horarios,id',
+                'asientos' => 'required|string',
+                'pasajeros' => 'required|string'
+            ]);
+            
+            Log::info('Datos validados correctamente:', $validatedData);
+
             DB::beginTransaction();
 
             $horario = Horario::with(['ruta', 'bus'])->findOrFail($request->horario_id);
-            $asientos = $request->asientos;
-            $datosAsajeros = $request->pasajeros;
+            Log::info('Horario encontrado:', $horario->toArray());
+            
+            // Decodificar los datos JSON
+            $asientos = json_decode($request->asientos, true);
+            $datosPasajeros = json_decode($request->pasajeros, true);
+            
+            Log::info('Asientos decodificados:', $asientos);
+            Log::info('Pasajeros decodificados:', $datosPasajeros);
+
+            // Verificar que la decodificación fue exitosa
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Error al decodificar JSON: ' . json_last_error_msg());
+            }
 
             // Verificar que la cantidad coincida
-            if (count($asientos) !== count($datosAsajeros)) {
+            if (!is_array($asientos) || !is_array($datosPasajeros)) {
+                throw new \Exception('Los datos no son arrays válidos');
+            }
+
+            if (count($asientos) !== count($datosPasajeros)) {
                 throw new \Exception('La cantidad de asientos no coincide con los pasajeros');
             }
 
@@ -118,13 +145,18 @@ return view('ventas.horarios', compact('ruta', 'horarios', 'fecha'));
                 'horario_id' => $horario->id,
                 'cantidad_pasajes' => count($asientos),
                 'total' => $horario->ruta->precio * count($asientos),
-                'fecha_venta' => now()
+                'fecha_venta' => now(),
+                'estado' => 'completada'
             ]);
+
+            Log::info('Venta creada:', $venta->toArray());
 
             $tickets = [];
 
             // Crear pasajeros y tickets
-            foreach ($datosAsajeros as $index => $datoPasajero) {
+            foreach ($datosPasajeros as $index => $datoPasajero) {
+                Log::info("Procesando pasajero {$index}:", $datoPasajero);
+                
                 // Buscar o crear pasajero
                 $pasajero = Pasajero::firstOrCreate(
                     ['dni' => $datoPasajero['dni']],
@@ -145,31 +177,63 @@ return view('ventas.horarios', compact('ruta', 'horarios', 'fecha'));
                 ]);
 
                 $tickets[] = $ticket;
+                Log::info("Ticket creado para pasajero {$index}:", $ticket->toArray());
             }
 
             // Actualizar asientos disponibles
             $horario->decrement('asientos_disponibles', count($asientos));
+            Log::info('Asientos actualizados. Disponibles ahora: ' . $horario->fresh()->asientos_disponibles);
 
             DB::commit();
+            Log::info('Transacción confirmada exitosamente');
 
             // Generar PDF de los tickets
-            $pdf = $this->generarTicketsPDF($venta, $tickets);
+            $pdf = $this->generarTicketsPDF($venta, collect($tickets));
 
+            Log::info('Redirigiendo a confirmación con venta ID: ' . $venta->id);
+            
             return view('ventas.confirmacion', compact('venta', 'tickets', 'pdf'));
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollback();
+            Log::error('Error de validación:', $e->errors());
+            return back()->withErrors($e->errors())->withInput();
+            
         } catch (\Exception $e) {
             DB::rollback();
+            Log::error('Error general en procesarVenta:', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return back()->with('error', 'Error al procesar la venta: ' . $e->getMessage())->withInput();
         }
     }
-private function generarCodigoVentaUnico()
-{
-    do {
-        $codigo = 'V-' . date('Ymd') . '-' . random_int(1000, 9999);
-    } while (\App\Models\Venta::where('codigo_venta', $codigo)->exists());
 
-    return $codigo;
-}
+    /**
+     * Generar código de venta único
+     */
+    private function generarCodigoVentaUnico()
+    {
+        do {
+            $codigo = 'V-' . date('Ymd') . '-' . random_int(1000, 9999);
+        } while (Venta::where('codigo_venta', $codigo)->exists());
+
+        return $codigo;
+    }
+
+    /**
+     * Generar número de ticket único
+     */
+    private function generarNumeroTicketUnico()
+    {
+        do {
+            $numero = 'T-' . date('Ymd') . '-' . random_int(10000, 99999);
+        } while (Ticket::where('numero_ticket', $numero)->exists());
+
+        return $numero;
+    }
 
     /**
      * Obtener asientos ocupados para un horario
@@ -214,44 +278,41 @@ private function generarCodigoVentaUnico()
     {
         return base64_encode($codigoVenta . '-' . $asiento . '-' . date('Y-m-d'));
     }
-    /**
- * Generar número de ticket único
- */
-private function generarNumeroTicketUnico()
-{
-    do {
-        $numero = 'T-' . date('Ymd') . '-' . random_int(10000, 99999);
-    } while (Ticket::where('numero_ticket', $numero)->exists());
-
-    return $numero;
-}
-
 
     /**
      * Generar PDF de tickets
      */
     private function generarTicketsPDF($venta, $tickets)
     {
-        $data = [
-            'venta' => $venta->load(['horario.ruta', 'horario.bus', 'user']),
-            'tickets' => $tickets->load('pasajero'),
-            'fecha_generacion' => now()
-        ];
+        try {
+            $data = [
+                'venta' => $venta->load(['horario.ruta', 'horario.bus', 'user']),
+                'tickets' => $tickets->load('pasajero'),
+                'fecha_generacion' => now()
+            ];
 
-        $pdf = Pdf::loadView('tickets.pdf', $data);
-        
-        // Guardar PDF en storage/app/public/tickets
-        $nombreArchivo = 'ticket_' . $venta->codigo_venta . '.pdf';
-        $rutaArchivo = storage_path('app/public/tickets/' . $nombreArchivo);
-        
-        // Crear directorio si no existe
-        if (!file_exists(dirname($rutaArchivo))) {
-            mkdir(dirname($rutaArchivo), 0755, true);
+            $pdf = Pdf::loadView('tickets.pdf', $data);
+            
+            // Guardar PDF en storage/app/public/tickets
+            $nombreArchivo = 'ticket_' . $venta->codigo_venta . '.pdf';
+            $rutaArchivo = storage_path('app/public/tickets/' . $nombreArchivo);
+            
+            // Crear directorio si no existe
+            if (!file_exists(dirname($rutaArchivo))) {
+                mkdir(dirname($rutaArchivo), 0755, true);
+            }
+            
+            $pdf->save($rutaArchivo);
+            Log::info('PDF generado exitosamente: ' . $nombreArchivo);
+
+            return $nombreArchivo;
+        } catch (\Exception $e) {
+            Log::error('Error generando PDF:', [
+                'message' => $e->getMessage(),
+                'venta_id' => $venta->id
+            ]);
+            return null;
         }
-        
-        $pdf->save($rutaArchivo);
-
-        return $nombreArchivo;
     }
 
     /**

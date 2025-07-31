@@ -209,7 +209,7 @@
                         </a>
                     </div>
                     <div class="col-6">
-                        <a href="{{ route('admin.horarios.crear') }}" class="btn btn-outline-success w-100 py-3">
+                        <a href="{{ route('admin.horarios.create') }}" class="btn btn-outline-success w-100 py-3">
                             <i class="bi bi-clock fs-3 d-block mb-1"></i>
                             <small>Nuevo Horario</small>
                         </a>

@@ -176,7 +176,9 @@
                         <small class="text-muted">Ventas</small>
                     </div>
                     <div class="col-6">
-                        <div class="fs-2 fw-bold text-success">S/ {{ number_format($ingresosHoy, 2) }}</div>
+                        <div class="fs-2 fw-bold text-success currency" data-amount="{{ $ingresosHoy }}">
+                            $ {{ number_format($ingresosHoy, 2, ',', '.') }}
+                        </div>
                         <small class="text-muted">Ingresos</small>
                     </div>
                 </div>
@@ -251,7 +253,9 @@
                                         {{ $ruta->getDuracionFormateada() }}
                                     </td>
                                     <td>
-                                        <span class="fw-bold text-success">S/ {{ number_format($ruta->precio, 2) }}</span>
+                                        <span class="fw-bold text-success currency" data-amount="{{ $ruta->precio }}">
+                                            $ {{ number_format($ruta->precio, 2, ',', '.') }}
+                                        </span>
                                     </td>
                                     <td>
                                         <span class="badge bg-success">Activa</span>
@@ -276,6 +280,14 @@
 
 @push('scripts')
 <script>
+// Helper global para formatear precios en pesos uruguayos
+window.formatCurrency = function(amount) {
+    return '$ ' + parseFloat(amount).toLocaleString('es-UY', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+};
+
 $(document).ready(function() {
     // Mostrar información de la ruta cuando se selecciona
     $('#ruta_id').change(function() {
@@ -292,7 +304,8 @@ $(document).ready(function() {
                 <div><strong>Duración:</strong> ${duracion}</div>
             `);
             
-            $('#rutaPrecio').html(`S/ ${parseFloat(precio).toFixed(2)}`);
+            // Formatear precio en pesos uruguayos
+            $('#rutaPrecio').html(formatCurrency(precio));
             $('#rutaInfo').removeClass('d-none').addClass('fade-in');
         } else {
             $('#rutaInfo').addClass('d-none');
@@ -355,6 +368,14 @@ $(document).ready(function() {
     
     $('#fecha').attr('min', today);
     $('#fecha').attr('max', maxDateStr);
+    
+    // Formatear todos los elementos con clase 'currency' al cargar la página
+    $('.currency').each(function() {
+        const amount = $(this).data('amount');
+        if (amount && !isNaN(amount)) {
+            $(this).text(formatCurrency(amount));
+        }
+    });
 });
 </script>
 @endpush

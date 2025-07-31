@@ -105,7 +105,24 @@ return [
             explode(',', (string) env('APP_PREVIOUS_KEYS', ''))
         ),
     ],
+  /*
+    |--------------------------------------------------------------------------
+    | Application Currency
+    |--------------------------------------------------------------------------
+    |
+    | This value is the currency symbol and format used throughout the application.
+    |
+    */
 
+    'currency' => [
+        'symbol' => '$',           // Símbolo del peso uruguayo
+        'code' => 'UYU',          // Código ISO de la moneda
+        'name' => 'Peso Uruguayo',
+        'decimals' => 2,          // Número de decimales
+        'decimal_separator' => ',',
+        'thousands_separator' => '.',
+    ],
+    
     /*
     |--------------------------------------------------------------------------
     | Maintenance Mode Driver

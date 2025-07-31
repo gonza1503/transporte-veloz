@@ -422,5 +422,23 @@ function cambiarFecha() {
         }
     });
 }
+
 </script>
+{{-- DEBUG SIMPLE --}}
+<div style="background: red; color: white; padding: 10px; margin: 10px 0;">
+    <strong>DEBUG:</strong> 
+    Ruta: {{ $ruta->codigo ?? 'NO DEFINIDA' }} | 
+    Fecha: {{ $fecha ?? 'NO DEFINIDA' }} | 
+    Action: {{ route('ventas.asientos') }}
+</div>
+<div style="background: blue; color: white; padding: 10px; margin: 10px 0;">
+    <form action="{{ route('ventas.asientos') }}" method="POST" style="display: inline;">
+        @csrf
+        <input type="hidden" name="horario_id" value="1">
+        <input type="hidden" name="cantidad" value="2">
+        <button type="submit" style="background: yellow; color: black; padding: 5px;">
+            TEST DIRECTO - POST a ventas.asientos
+        </button>
+    </form>
+</div>
 @endpush
